@@ -7,19 +7,23 @@ permissions:
 
 on:
   push:
+  pull_request:
 
 jobs:
   run:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
@@ -33,22 +37,54 @@ jobs:
             libgif-dev \
             librsvg2-dev
 
-      - uses: iterative/setup-cml@v2
+      - name: Set up CML
+        uses: iterative/setup-cml@v2
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Train model
         run: |
-          pip install -r requirements.txt
           python train_model.py
+
+      - name: Verify generated files
+        run: |
+          pwd
+          ls -lah
+
+          test -f scores.txt || (echo "ERROR: scores.txt not found" && exit 1)
+          test -f ConfusionMatrix.png || (echo "ERROR: ConfusionMatrix.png not found" && exit 1)
+          test -f FeatureImportance.png || (echo "ERROR: FeatureImportance.png not found" && exit 1)
 
       - name: Create CML report
         env:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "## RF and LR Model Score" > report.md
+          echo "## Model Training Report" > report.md
+          echo "" >> report.md
+          echo "### RF and LR Model Scores" >> report.md
+          echo '```text' >> report.md
           cat scores.txt >> report.md
+          echo '```' >> report.md
+          echo "" >> report.md
 
-          echo "## Confusion Matrix & Feature Importance" >> report.md
+          echo "### Confusion Matrix" >> report.md
           echo "![Confusion Matrix](./ConfusionMatrix.png)" >> report.md
+          echo "" >> report.md
+
+          echo "### Feature Importance" >> report.md
           echo "![Feature Importance](./FeatureImportance.png)" >> report.md
 
           cml comment create report.md
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-training-artifacts
+          path: |
+            scores.txt
+            ConfusionMatrix.png
+            FeatureImportance.png
+            report.md
